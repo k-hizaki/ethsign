@@ -7,6 +7,8 @@ import (
 	"math/big"
 	"context"
 	"bytes"
+	"image/png"
+	"os"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -16,6 +18,9 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/boombuler/barcode"
+	"github.com/boombuler/barcode/qr"
+	"github.com/tuotoo/qrcode"
 )
 
 func main() {
@@ -26,7 +31,7 @@ func main() {
 	// TransactOpts c.f. https://github.com/ethereum/go-ethereum/blob/0e00ee42ec4e43ce3b9b1ffdadea3c66aa6eeba4/accounts/abi/bind/base.go#L47
 	authA := bind.NewKeyedTransactor(keyA)
 	authB := bind.NewKeyedTransactor(keyB)
-	
+
 	// prepare the data for the simulated ethereum blockchain
 	balance := new(big.Int)
 	balance.SetString("10000000000000000000", 10) // 10 eth in wei
@@ -41,7 +46,7 @@ func main() {
 		},
 	}
 	blockGasLimit := uint64(4712388)
-	
+
 	// get the simulated blockchain
 	sim := backends.NewSimulatedBackend(genesisAlloc, blockGasLimit)
 
@@ -63,11 +68,34 @@ func main() {
 	signedTxOffline.EncodeRLP(&buf)
 	fmt.Printf("%x\n", buf)
 
+	// create qr code
+	qrCode, err := qr.Encode(string(buf.Bytes()), qr.M, qr.Auto)
+	if err != nil {
+		log.Fatalf("Failed to create qrcode")
+	}
+
+	qrCode, _ = barcode.Scale(qrCode, 200, 200)
+
+	file, _ := os.Create("qrcode.png")
+	defer file.Close()
+
+	png.Encode(file, qrCode)
 
 	// -------- Done in online terminal --------
+	// read qr code
+	fi, err := os.Open("qrcode.png")
+	if err != nil {
+		log.Fatalf("Failed to read qrcode")
+	}
+	defer fi.Close()
+	qrbuf, err := qrcode.Decode(fi)
+	if err != nil {
+		log.Fatalf("Failed to decode qrcode")
+	}
+
 	// send transaction from authB
 	var tx types.Transaction
-	reader := bytes.NewReader(buf.Bytes())
+	reader := bytes.NewReader([]byte(qrbuf.Content))
 	stream := rlp.NewStream(reader, uint64(reader.Size()))
 	tx.DecodeRLP(stream)
 
